@@ -1,0 +1,157 @@
+In this final project, I practiced various topics in OOP345 and conquered some 
+challenges I met while coding. They're three milestones included in the final 
+project. I'm going to talk about the challenges I've met in each milestone and 
+try to explain my implementation.
+In MS1, I spent most of my time on the "extractToken" function. This function 
+reads a whole record (as a line) and uses the delimiter to extract the next token 
+from the string starting at position "next_pos". For me, the most confusing part 
+is to update "next_pos" with the position of the next token. It took me some time 
+to figure out how I could accomplish it. Please take a look at below code block:
+
+//Utilities.cpp
+std::string Utilities::extractToken(
+   const std::string& str, size_t& next_pos, bool& more) {
+   std::string token{};
+   if (more) { 
+      token = trim(str.substr(next_pos, (str.find(m_delimiter, next_pos) - next_pos)));
+      m_widthField < token.length() ? m_widthField = token.length() : m_widthField;
+
+      if (str.find(m_delimiter, next_pos) != string::npos && !token.empty()) {
+         next_pos = str.find(m_delimiter, next_pos) + 1;
+         more = true;
+         return token;
+      }
+      else {
+         more = false;
+      }
+
+      //Check delemiter 
+      if (str[next_pos] == m_delimiter) {
+         throw std::string("ERROR: Delimiter is found at next position!");
+      }
+
+   } 
+      return token;
+}
+
+In my solution, I first use the if condition to filter the situation that there's 
+no more token to be read. This step is necessary for MS3 too. Otherwise, the program 
+could not determine where is the end of the line in a workstation (it will set the 
+very end workstation's "m_pNextStation" itself. After extracting the token, it still 
+needs to determine the "next_pos". I used 
+
+str.find(m_delimiter, next_pos) != string::npos 
+
+to check if there's still have delimiter in the string. If the program finds a 
+delimiter and the token is not an empty string, it will set the "next_pos" to the 
+corresponding position. All the logic is to implement for the right outcome.
+
+Since we've practiced the dynamic array of the pointers in workshop four before, the 
+MS2 was the smoothest milestone when I was doing the final project. However, I still 
+missed some critical technics when I first completed it. Within the constructor of 
+CustomerOrder class the program needs to allocate the memory for two layers:
+
+//CustomerOrder.cpp
+CustomerOrder::CustomerOrder(const std::string& src){
+   ...
+   m_lstItem = new Item * [m_cntItem];
+   for (auto i = 0u; i < m_cntItem; i++) {
+      m_lstItem[i] = new Item(tempItem[i]);
+   }
+   ...
+}
+
+At the same time, when the program moves the CustomerOrder, we'll need to 
+deallocate the dynamic memory. It takes more work when the program clears (deletes) 
+the original "m_lstItem" because it first has to delete the second layers of the 
+pointer and then delete the one in the first layer.
+
+//CustomerOrder.cpp
+CustomerOrder& CustomerOrder::operator=(CustomerOrder&& src) noexcept{
+   if (this != &src) {
+      for (auto i = 0u; i < m_cntItem; i++) {
+         delete m_lstItem[i];
+      }
+      delete[] m_lstItem;
+      ...
+   }
+   return *this;
+}
+
+CustomerOrder::~CustomerOrder(){
+   for (auto i = 0u; i < m_cntItem; i++) {
+      delete m_lstItem[i];
+   }
+   delete[] m_lstItem;
+}
+
+I forgot to do this in the first place. In the workshop, I only did the double layers 
+deallocation for the copy assignment, but in the final project, the copy assignment 
+has been deleted as per the instruction. However, I found the reason I don't have to 
+do it in the workshop is that the main.cpp does the first-layer deallocate for us. It 
+doesn't mean we don't have to do this in the move assignment.
+
+In the last part, milestone 3, I believe the most time-consuming function is the 
+constructor of the LineManager class. It took me some time to design how the logic 
+should work, but after I watched the supplemental video, an idea for the implementation 
+became clearer. Please take a look at the below code:
+
+//LineManager.cpp
+LineManager::LineManager(const std::string& file, const std::vector<Workstation*>& stations){
+   std::fstream fileIn(file);
+   std::vector<Workstation*> nextStationPtr{};
+   try {
+      while (!fileIn.eof()) {
+         std::string record{};
+         Utilities temp{};
+         size_t pos{};
+         bool more{ true };
+
+         std::string ws{}, nextWs{};
+
+         getline(fileIn, record);   //SHOULD READ A WHOLE LINE
+         ws = temp.extractToken(record, pos, more);
+         nextWs = temp.extractToken(record, pos, more);
+
+         Workstation* tempStation{};
+         tempStation = *(find_if(stations.begin(), stations.end(), [=](Workstation* st) {return st->getItemName() == ws; }));
+         m_activeLine.push_back(tempStation);
+
+         if (nextWs.length()) {  //mextWs.length() == 0 -> lest station.
+            tempStation = *(find_if(stations.begin(), stations.end(), [=](Workstation* st) {return st->getItemName() == nextWs; }));
+            m_activeLine.back()->setNextStation(tempStation);
+            nextStationPtr.push_back(tempStation);
+         }
+      }
+      fileIn.close();
+
+      //Find the first one.
+      for_each(m_activeLine.begin(), m_activeLine.end(), [=](Workstation* st) {
+         if (find(nextStationPtr.begin(), nextStationPtr.end(), st) == nextStationPtr.end()) {
+            m_firstStation = st;
+         }
+         });
+
+      m_cntCustomerOrder = g_pending.size();
+   }catch (...) {
+      throw std::string("ERROR: Something went wrong in LineManager constructor.");
+   }
+}
+
+In the solution, I focused on two parts. The first one is to read a line from a file and 
+get to know the workstation and the next workstation. The second part is to find the very 
+first workstation.
+To implement these, I recalled the Utilities function that extracts the workstation and 
+the next workstation tokens. The program got the tokens with a string, but we need to 
+find the corresponding workstation in the "stations" argument, which is a pool of the 
+workstations and push it to the m_activeLine vector. To achieve this, I used the "find_if" 
+algorithm. Additionally, I used the "setNextStation" in the Workstation class to set the next 
+station for the workstation and put those "nextWs" into the vector to collect those data.
+After this, the first workstation should be inside the "m_activeLine" but not included in 
+the "nextStationPtr" vector. I know I need to check which element is in "m_activeLine" but 
+can not be found in the "nextStationPtr"; I used the "for_each" and "find" algorithms to 
+accomplish this.
+
+I find this final project fun and concise. With only three milestones, I will not forget what 
+I've done in previous milestones and always need to turn to the front to confirm the instruction 
+and function. I enjoyed this project a lot.
